@@ -160,8 +160,5 @@ app.get('*', (req, res, next) => {
     res.sendFile(path.join(__dirname + '/client/build/index.html'));
 })
 
-PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
-    console.log(`Weather Vis listening on ${PORT}!`);
-});
+module.exports = app;

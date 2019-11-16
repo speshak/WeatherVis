@@ -1,0 +1,44 @@
+---
+version: 0.2
+env:
+  variables:
+    BUCKET: "weathervis-deploy"
+    STACK: "WeatherVisBackend"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 10
+  pre_build:
+    commands:
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - BUCKET="${BUCKET}-${ACCOUNT_ID}"
+      - echo Bucket - ${BUCKET}
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Compiling backend code
+      - cd backend
+      - npm install
+      - npm test
+      - find node_modules -mtime +10950 -exec touch {} \;
+      - sed -i "s/{{AWS_REGION}}/${AWS_REGION}/g" simple-proxy-api.yaml
+      - sed -i "s/{{ACCOUNT_ID}}/${ACCOUNT_ID}/g" simple-proxy-api.yaml
+      - aws cloudformation package --template ./cloudformation.yaml --s3-bucket ${BUCKET} --output-template packaged-sam.yaml --region ${AWS_REGION}
+      - echo Deploying
+      - aws cloudformation deploy --template-file packaged-sam.yaml --stack-name ${STACK} --capabilities CAPABILITY_IAM --region ${AWS_REGION} --parameter-overrides "AcmCertificateArn=${ACM_CERT}" "DomainName=${DOMAIN}"
+      - WEBSITE_BUCKET=$(aws cloudformation describe-stacks --stack-name ${STACK} --region ${AWS_REGION} --query 'Stacks[0].Outputs[?OutputKey==`WebsiteBucket`].OutputValue' --output text)
+      - echo Compiling frontend code
+      - cd ../react-app
+      - npm install
+      - npm run build
+      - echo Deploying to ${WEBSITE_BUCKET}
+      - aws s3 sync ../backend/client s3://${WEBSITE_BUCKET}
+  post_build:
+    commands:
+      - echo Build completed on `date`
+
+cache:
+  paths:
+    - backend/node_modules
+    - react-app/node_modules
